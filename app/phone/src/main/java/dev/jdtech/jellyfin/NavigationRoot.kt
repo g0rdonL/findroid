@@ -60,6 +60,7 @@ import dev.jdtech.jellyfin.presentation.setup.login.LoginScreen
 import dev.jdtech.jellyfin.presentation.setup.servers.ServersScreen
 import dev.jdtech.jellyfin.presentation.setup.users.UsersScreen
 import dev.jdtech.jellyfin.presentation.setup.welcome.WelcomeScreen
+import dev.jdtech.jellyfin.presentation.theater.TheaterScreen
 import dev.jdtech.jellyfin.presentation.utils.LocalOfflineMode
 import java.util.UUID
 import kotlinx.serialization.Serializable
@@ -81,6 +82,8 @@ import kotlinx.serialization.Serializable
 @Serializable data object MediaRoute
 
 @Serializable data object DownloadsRoute
+
+@Serializable data object TheaterRoute
 
 @Serializable
 data class LibraryRoute(
@@ -132,6 +135,12 @@ val downloadsTab =
         icon = CoreR.drawable.ic_download,
         route = DownloadsRoute,
     )
+val theaterTab =
+    TabBarItem(
+        title = CoreR.string.title_theater,
+        icon = CoreR.drawable.ic_tv,
+        route = TheaterRoute,
+    )
 
 @Composable
 fun NavigationRoot(
@@ -152,8 +161,8 @@ fun NavigationRoot(
 
     val navigationItems =
         when (isOfflineMode) {
-            false -> listOf(homeTab, mediaTab, downloadsTab)
-            true -> listOf(homeTab, downloadsTab)
+            false -> listOf(homeTab, mediaTab, downloadsTab, theaterTab)
+            true -> listOf(homeTab, downloadsTab, theaterTab)
         }
     val navigationItemClassNames = navigationItems.map { it.route::class.qualifiedName }
 
@@ -336,6 +345,9 @@ fun NavigationRoot(
                         navigateToItem(navController = navController, item = item)
                     }
                 )
+            }
+            composable<TheaterRoute> {
+                TheaterScreen(onBack = { navController.safePopBackStack() })
             }
             composable<LibraryRoute> { backStackEntry ->
                 val route: LibraryRoute = backStackEntry.toRoute()
