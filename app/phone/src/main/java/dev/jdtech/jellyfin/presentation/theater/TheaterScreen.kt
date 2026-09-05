@@ -16,7 +16,7 @@ const val THEATER_URL = "http://100.99.195.85:8181"
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun TheaterScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
+fun TheaterScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
     val context = LocalContext.current
 
     val webView =
