@@ -1,7 +1,6 @@
 package dev.jdtech.jellyfin.presentation.theater
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,22 +21,23 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.res.stringResource
@@ -57,6 +59,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.presentation.film.components.BaseBadge
 import dev.jdtech.jellyfin.presentation.theme.LocalSpacings
 import java.util.Locale
 
@@ -70,6 +73,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
 
     var selectedTab by remember { mutableStateOf(TheaterTab.SEARCH) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     LaunchedEffect(selectedTab) {
         when (selectedTab) {
@@ -92,11 +96,16 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
     }
 
     Scaffold(
-        modifier = modifier.fillMaxSize().recalculateWindowInsets(),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .recalculateWindowInsets()
+                .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
                 title = { Text(text = stringResource(CoreR.string.title_theater)) },
                 windowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
+                scrollBehavior = scrollBehavior,
             )
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
@@ -105,7 +114,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
         Column(
             modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
         ) {
-            TabRow(selectedTabIndex = selectedTab.ordinal) {
+            SecondaryTabRow(selectedTabIndex = selectedTab.ordinal) {
                 TheaterTab.entries.forEach { tab ->
                     Tab(
                         selected = selectedTab == tab,
@@ -171,7 +180,7 @@ private fun SearchSection(
         OutlinedTextField(
             value = state.query,
             onValueChange = onQueryChange,
-            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
+            modifier = Modifier.fillMaxWidth().padding(spacings.default),
             label = { Text(text = "Search") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
@@ -179,7 +188,7 @@ private fun SearchSection(
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = spacings.medium),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = spacings.default),
             horizontalArrangement = Arrangement.spacedBy(spacings.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -203,7 +212,7 @@ private fun SearchSection(
         Row(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(horizontal = spacings.medium, vertical = spacings.extraSmall),
+                    .padding(horizontal = spacings.default, vertical = spacings.extraSmall),
             horizontalArrangement = Arrangement.spacedBy(spacings.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -237,10 +246,10 @@ private fun SearchSection(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding =
                         PaddingValues(
-                            start = spacings.medium,
-                            end = spacings.medium,
+                            start = spacings.default,
+                            end = spacings.default,
                             top = spacings.small,
-                            bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                            bottom = innerPadding.calculateBottomPadding() + spacings.default,
                         ),
                     verticalArrangement = Arrangement.spacedBy(spacings.small),
                 ) {
@@ -268,10 +277,10 @@ private fun SearchSection(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding =
                         PaddingValues(
-                            start = spacings.medium,
-                            end = spacings.medium,
+                            start = spacings.default,
+                            end = spacings.default,
                             top = spacings.small,
-                            bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                            bottom = innerPadding.calculateBottomPadding() + spacings.default,
                         ),
                     verticalArrangement = Arrangement.spacedBy(spacings.small),
                 ) {
@@ -290,10 +299,10 @@ private fun SearchSection(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding =
                         PaddingValues(
-                            start = spacings.medium,
-                            end = spacings.medium,
+                            start = spacings.default,
+                            end = spacings.default,
                             top = spacings.small,
-                            bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                            bottom = innerPadding.calculateBottomPadding() + spacings.default,
                         ),
                     verticalArrangement = Arrangement.spacedBy(spacings.small),
                 ) {
@@ -315,9 +324,9 @@ private fun SimklResultCard(
     // The tracker endpoints key off TMDB, so a result without one cannot be acted on.
     val actionsEnabled = result.tmdb != null
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
             horizontalArrangement = Arrangement.spacedBy(spacings.small),
         ) {
             Poster(url = result.poster, modifier = Modifier.width(72.dp))
@@ -362,8 +371,8 @@ private fun MovieResultCard(
 ) {
     val spacings = LocalSpacings.current
 
-    Card(modifier = Modifier.fillMaxWidth().clickable { onExpand() }) {
-        Column(modifier = Modifier.padding(spacings.small)) {
+    OutlinedCard(onClick = onExpand, modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(spacings.medium)) {
             Row(horizontalArrangement = Arrangement.spacedBy(spacings.small)) {
                 Poster(url = movie.poster, modifier = Modifier.width(72.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -413,9 +422,9 @@ private fun MovieResultCard(
 private fun TvResultRow(result: TheaterTvResult, onDownload: () -> Unit) {
     val spacings = LocalSpacings.current
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(spacings.small),
         ) {
@@ -486,10 +495,10 @@ private fun DownloadsSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding =
                     PaddingValues(
-                        start = spacings.medium,
-                        end = spacings.medium,
+                        start = spacings.default,
+                        end = spacings.default,
                         top = spacings.small,
-                        bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                        bottom = innerPadding.calculateBottomPadding() + spacings.default,
                     ),
                 verticalArrangement = Arrangement.spacedBy(spacings.small),
             ) {
@@ -521,9 +530,9 @@ private fun DownloadRow(
 ) {
     val spacings = LocalSpacings.current
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
             verticalArrangement = Arrangement.spacedBy(spacings.extraSmall),
         ) {
             Text(
@@ -587,10 +596,10 @@ private fun WatchlistSection(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding =
                     PaddingValues(
-                        start = spacings.medium,
-                        end = spacings.medium,
+                        start = spacings.default,
+                        end = spacings.default,
                         top = spacings.small,
-                        bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                        bottom = innerPadding.calculateBottomPadding() + spacings.default,
                     ),
                 verticalArrangement = Arrangement.spacedBy(spacings.small),
             ) {
@@ -613,9 +622,9 @@ private fun WatchlistSection(
 private fun WatchlistRow(movie: TheaterWatchlistMovie, onRemove: () -> Unit) {
     val spacings = LocalSpacings.current
 
-    Card(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
             horizontalArrangement = Arrangement.spacedBy(spacings.small),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -631,15 +640,15 @@ private fun WatchlistRow(movie: TheaterWatchlistMovie, onRemove: () -> Unit) {
                 }
             }
             if (movie.owned) {
-                Text(
-                    text = "In library",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier =
-                        Modifier.clip(MaterialTheme.shapes.small)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .padding(horizontal = spacings.small, vertical = spacings.extraSmall),
-                )
+                BaseBadge {
+                    Text(
+                        text = "In library",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier =
+                            Modifier.align(Alignment.Center).padding(horizontal = spacings.small),
+                    )
+                }
             }
             TextButton(onClick = onRemove, enabled = movie.tmdb != null) {
                 Text(text = "Remove", color = MaterialTheme.colorScheme.error)
@@ -650,17 +659,16 @@ private fun WatchlistRow(movie: TheaterWatchlistMovie, onRemove: () -> Unit) {
 
 @Composable
 private fun Poster(url: String?, modifier: Modifier = Modifier) {
-    Box(
+    AsyncImage(
+        model = url,
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
         modifier =
             modifier
-                .aspectRatio(2f / 3f)
+                .aspectRatio(0.66f)
                 .clip(MaterialTheme.shapes.small)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        if (url != null) {
-            AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxSize())
-        }
-    }
+                .background(MaterialTheme.colorScheme.surfaceContainer),
+    )
 }
 
 @Composable
