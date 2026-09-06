@@ -346,9 +346,7 @@ fun NavigationRoot(
                     }
                 )
             }
-            composable<TheaterRoute> {
-                TheaterScreen(onBack = { navController.safePopBackStack() })
-            }
+            composable<TheaterRoute> { TheaterScreen() }
             composable<LibraryRoute> { backStackEntry ->
                 val route: LibraryRoute = backStackEntry.toRoute()
                 LibraryScreen(

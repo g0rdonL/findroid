@@ -1,0 +1,232 @@
+package dev.jdtech.jellyfin.presentation.theater
+
+import java.io.IOException
+import java.util.concurrent.TimeUnit
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import okhttp3.FormBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+
+const val THEATER_BASE = "http://100.99.195.85:8181"
+
+/** A single downloadable torrent belonging to a movie search result. */
+@Serializable
+data class TheaterTorrent(
+    val quality: String? = null,
+    val type: String? = null,
+    val seeds: Int = 0,
+    val size: String? = null,
+    val hash: String = "",
+)
+
+@Serializable
+data class TheaterMovie(
+    val title: String = "",
+    val year: Int? = null,
+    val rating: Double? = null,
+    val imdb: String? = null,
+    val poster: String? = null,
+    val torrents: List<TheaterTorrent> = emptyList(),
+)
+
+@Serializable private data class MovieSearchResponse(val results: List<TheaterMovie> = emptyList())
+
+@Serializable
+data class TheaterTvResult(
+    val title: String = "",
+    val seeds: Int = 0,
+    val size: String? = null,
+    val hash: String = "",
+    val quality: String? = null,
+)
+
+@Serializable
+private data class TvSearchResponse(val results: List<TheaterTvResult> = emptyList())
+
+@Serializable
+data class TheaterDownload(
+    val hash: String = "",
+    val name: String = "",
+    val state: String = "",
+    val progress: Double = 0.0,
+    val dlspeed: Long = 0,
+    val seeds: Int = 0,
+    val eta: Long = ETA_UNKNOWN,
+) {
+    val isPaused: Boolean
+        get() = state.startsWith("stopped", ignoreCase = true) || state.startsWith("paused", true)
+
+    companion object {
+        const val ETA_UNKNOWN = 8640000L
+    }
+}
+
+@Serializable
+private data class DownloadsResponse(val downloads: List<TheaterDownload> = emptyList())
+
+@Serializable
+data class TheaterWatchlistMovie(
+    val title: String = "",
+    val year: Int? = null,
+    val tmdb: Int? = null,
+    val owned: Boolean = false,
+    val folder: String? = null,
+    val poster: String? = null,
+)
+
+@Serializable
+data class TheaterWatchlist(
+    val authorized: Boolean = false,
+    val movies: List<TheaterWatchlistMovie> = emptyList(),
+)
+
+@Serializable
+data class TheaterSimklResult(
+    val title: String = "",
+    val year: Int? = null,
+    val tmdb: Int? = null,
+    @SerialName("simkl_id") val simklId: Int? = null,
+    val imdb: String? = null,
+    val poster: String? = null,
+    val rating: Double? = null,
+    val kind: String? = null,
+)
+
+@Serializable
+private data class SimklSearchResponse(val results: List<TheaterSimklResult> = emptyList())
+
+@Serializable
+private data class OkResponse(
+    val ok: Boolean = false,
+    @SerialName("error") val error: String? = null,
+)
+
+/** Thin client for the theater server's JSON API. */
+@Singleton
+class TheaterApi @Inject constructor() {
+    private val client =
+        OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .build()
+
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+    }
+
+    suspend fun searchMovies(query: String): List<TheaterMovie> {
+        val body = get("/api/search?q=${query.urlEncoded()}")
+        return json.decodeFromString<MovieSearchResponse>(body).results
+    }
+
+    suspend fun searchTv(query: String): List<TheaterTvResult> {
+        val body = get("/api/search/tv?q=${query.urlEncoded()}")
+        return json.decodeFromString<TvSearchResponse>(body).results
+    }
+
+    suspend fun downloads(): List<TheaterDownload> {
+        val body = get("/api/downloads")
+        return json.decodeFromString<DownloadsResponse>(body).downloads
+    }
+
+    suspend fun watchlist(): TheaterWatchlist {
+        val body = get("/api/watchlist")
+        return json.decodeFromString<TheaterWatchlist>(body)
+    }
+
+    suspend fun addMovieTorrent(hash: String, name: String) {
+        postForm("/api/torrent/add", "hash" to hash, "name" to name)
+    }
+
+    suspend fun addTvTorrent(hash: String, name: String) {
+        postForm("/api/torrent/add/tv", "hash" to hash, "name" to name)
+    }
+
+    suspend fun torrentAction(action: String, hash: String) {
+        postForm("/api/torrent/action", "a" to action, "hash" to hash)
+    }
+
+    suspend fun addToWatchlist(imdb: String, title: String) {
+        postForm("/api/watchlist/add", "imdb" to imdb, "title" to title)
+    }
+
+    suspend fun simklSearch(query: String, kind: String): List<TheaterSimklResult> {
+        val body = get("/api/simkl/search?q=${query.urlEncoded()}&kind=$kind")
+        return json.decodeFromString<SimklSearchResponse>(body).results
+    }
+
+    /** Adds a SimKL search result to the watchlist. Shows also carry their SimKL id. */
+    suspend fun addToWatchlist(result: TheaterSimklResult, isShow: Boolean) {
+        val fields = mutableListOf<Pair<String, String>>()
+        if (isShow) {
+            fields.add("kind" to "tv")
+        }
+        result.tmdb?.let { fields.add("tmdb" to it.toString()) }
+        if (isShow) {
+            result.simklId?.let { fields.add("simkl_id" to it.toString()) }
+        }
+        fields.add("title" to result.title)
+        result.year?.let { fields.add("year" to it.toString()) }
+        postForm("/api/watchlist/add", *fields.toTypedArray())
+    }
+
+    suspend fun markWatched(result: TheaterSimklResult, isShow: Boolean) {
+        val fields = mutableListOf<Pair<String, String>>()
+        if (isShow) {
+            fields.add("kind" to "tv")
+        }
+        result.tmdb?.let { fields.add("tmdb" to it.toString()) }
+        if (isShow) {
+            result.simklId?.let { fields.add("simkl_id" to it.toString()) }
+        }
+        fields.add("title" to result.title)
+        postForm("/api/watched/add", *fields.toTypedArray())
+    }
+
+    suspend fun removeFromWatchlist(tmdb: Int) {
+        postForm("/api/watchlist/remove", "tmdb" to tmdb.toString())
+    }
+
+    private suspend fun get(path: String): String =
+        withContext(Dispatchers.IO) {
+            execute(Request.Builder().url(THEATER_BASE + path).get().build())
+        }
+
+    private suspend fun postForm(path: String, vararg fields: Pair<String, String>) {
+        val body: RequestBody =
+            FormBody.Builder()
+                .apply { fields.forEach { (name, value) -> add(name, value) } }
+                .build()
+        val response =
+            withContext(Dispatchers.IO) {
+                execute(Request.Builder().url(THEATER_BASE + path).post(body).build())
+            }
+        val result = json.decodeFromString<OkResponse>(response)
+        if (!result.ok) {
+            throw IOException(result.error ?: "Request failed")
+        }
+    }
+
+    private fun execute(request: Request): String {
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                val message =
+                    runCatching { json.decodeFromString<OkResponse>(body).error }.getOrNull()
+                throw IOException(message ?: "HTTP ${response.code}")
+            }
+            return body
+        }
+    }
+}
+
+private fun String.urlEncoded(): String =
+    java.net.URLEncoder.encode(this, Charsets.UTF_8.name())

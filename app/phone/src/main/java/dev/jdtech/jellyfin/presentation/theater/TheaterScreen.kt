@@ -1,46 +1,721 @@
 package dev.jdtech.jellyfin.presentation.theater
 
-import android.annotation.SuppressLint
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.recalculateWindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil3.compose.AsyncImage
+import dev.jdtech.jellyfin.core.R as CoreR
+import dev.jdtech.jellyfin.presentation.theme.LocalSpacings
+import java.util.Locale
 
-const val THEATER_URL = "http://100.99.195.85:8181"
-
-@SuppressLint("SetJavaScriptEnabled")
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TheaterScreen(modifier: Modifier = Modifier, onBack: () -> Unit) {
-    val context = LocalContext.current
+fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = hiltViewModel()) {
+    val searchState by viewModel.searchState.collectAsStateWithLifecycle()
+    val downloadsState by viewModel.downloadsState.collectAsStateWithLifecycle()
+    val watchlistState by viewModel.watchlistState.collectAsStateWithLifecycle()
+    val message by viewModel.messages.collectAsStateWithLifecycle()
 
-    val webView =
-        remember {
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                webViewClient = WebViewClient()
-                loadUrl(THEATER_URL)
+    var selectedTab by remember { mutableStateOf(TheaterTab.SEARCH) }
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(selectedTab) {
+        when (selectedTab) {
+            TheaterTab.DOWNLOADS -> viewModel.startPollingDownloads()
+            TheaterTab.WATCHLIST -> {
+                viewModel.stopPollingDownloads()
+                viewModel.loadWatchlist()
             }
-        }
-
-    DisposableEffect(Unit) { onDispose { webView.destroy() } }
-
-    BackHandler {
-        if (webView.canGoBack()) {
-            webView.goBack()
-        } else {
-            onBack()
+            TheaterTab.SEARCH -> viewModel.stopPollingDownloads()
         }
     }
 
-    AndroidView(
-        modifier = modifier.fillMaxSize(),
-        factory = { webView },
-    )
+    DisposableEffect(Unit) { onDispose { viewModel.stopPollingDownloads() } }
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbarHostState.showSnackbar(it)
+            viewModel.onMessageShown()
+        }
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize().recalculateWindowInsets(),
+        topBar = {
+            TopAppBar(
+                title = { Text(text = stringResource(CoreR.string.title_theater)) },
+                windowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
+            )
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        contentWindowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
+        ) {
+            TabRow(selectedTabIndex = selectedTab.ordinal) {
+                TheaterTab.entries.forEach { tab ->
+                    Tab(
+                        selected = selectedTab == tab,
+                        onClick = { selectedTab = tab },
+                        text = { Text(text = tab.label()) },
+                    )
+                }
+            }
+
+            when (selectedTab) {
+                TheaterTab.SEARCH ->
+                    SearchSection(
+                        state = searchState,
+                        innerPadding = innerPadding,
+                        onQueryChange = viewModel::onQueryChange,
+                        onModeChange = viewModel::onModeChange,
+                        onSourceChange = viewModel::onSourceChange,
+                        onSearch = viewModel::search,
+                        onExpand = viewModel::onResultExpand,
+                        onDownloadMovie = viewModel::addMovieTorrent,
+                        onDownloadTv = viewModel::addTvTorrent,
+                        onWatchlistAdd = viewModel::addToWatchlist,
+                        onSimklWatchlist = viewModel::addSimklToWatchlist,
+                        onSimklWatched = viewModel::markWatched,
+                    )
+                TheaterTab.DOWNLOADS ->
+                    DownloadsSection(
+                        state = downloadsState,
+                        innerPadding = innerPadding,
+                        onPauseResume = viewModel::pauseOrResume,
+                        onDelete = viewModel::delete,
+                    )
+                TheaterTab.WATCHLIST ->
+                    WatchlistSection(
+                        state = watchlistState,
+                        innerPadding = innerPadding,
+                        onRefresh = viewModel::loadWatchlist,
+                        onRemove = viewModel::removeFromWatchlist,
+                    )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchSection(
+    state: TheaterSearchState,
+    innerPadding: PaddingValues,
+    onQueryChange: (String) -> Unit,
+    onModeChange: (SearchMode) -> Unit,
+    onSourceChange: (SearchSource) -> Unit,
+    onSearch: () -> Unit,
+    onExpand: (String?) -> Unit,
+    onDownloadMovie: (TheaterMovie, TheaterTorrent) -> Unit,
+    onDownloadTv: (TheaterTvResult) -> Unit,
+    onWatchlistAdd: (TheaterMovie) -> Unit,
+    onSimklWatchlist: (TheaterSimklResult) -> Unit,
+    onSimklWatched: (TheaterSimklResult) -> Unit,
+) {
+    val spacings = LocalSpacings.current
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = state.query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
+            label = { Text(text = "Search") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = spacings.medium),
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Source",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FilterChip(
+                selected = state.source == SearchSource.TORRENTS,
+                onClick = { onSourceChange(SearchSource.TORRENTS) },
+                label = { Text(text = "Torrents") },
+            )
+            FilterChip(
+                selected = state.source == SearchSource.SIMKL,
+                onClick = { onSourceChange(SearchSource.SIMKL) },
+                label = { Text(text = "Track") },
+            )
+        }
+
+        Row(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = spacings.medium, vertical = spacings.extraSmall),
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FilterChip(
+                selected = state.mode == SearchMode.MOVIES,
+                onClick = { onModeChange(SearchMode.MOVIES) },
+                label = { Text(text = "Movies") },
+            )
+            FilterChip(
+                selected = state.mode == SearchMode.TV,
+                onClick = { onModeChange(SearchMode.TV) },
+                label = { Text(text = "TV") },
+            )
+            Box(modifier = Modifier.weight(1f))
+            TextButton(onClick = onSearch, enabled = state.query.isNotBlank()) {
+                Text(text = "Search")
+            }
+        }
+
+        when {
+            state.isLoading -> CenteredLoading()
+            state.error != null -> CenteredMessage(text = state.error, isError = true)
+            state.source == SearchSource.SIMKL && state.simklResults.isEmpty() ->
+                CenteredMessage(
+                    text =
+                        if (state.hasSearched) "No results."
+                        else "Search the SimKL catalogue to track something."
+                )
+            state.source == SearchSource.SIMKL ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding =
+                        PaddingValues(
+                            start = spacings.medium,
+                            end = spacings.medium,
+                            top = spacings.small,
+                            bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(spacings.small),
+                ) {
+                    items(items = state.simklResults) { result ->
+                        SimklResultCard(
+                            result = result,
+                            onWatchlist = { onSimklWatchlist(result) },
+                            onWatched = { onSimklWatched(result) },
+                        )
+                    }
+                }
+            state.mode == SearchMode.MOVIES && state.movies.isEmpty() ->
+                CenteredMessage(
+                    text =
+                        if (state.hasSearched) "No results."
+                        else "Search for a movie to get started."
+                )
+            state.mode == SearchMode.TV && state.tvResults.isEmpty() ->
+                CenteredMessage(
+                    text =
+                        if (state.hasSearched) "No results." else "Search for an episode or show."
+                )
+            state.mode == SearchMode.MOVIES ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding =
+                        PaddingValues(
+                            start = spacings.medium,
+                            end = spacings.medium,
+                            top = spacings.small,
+                            bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(spacings.small),
+                ) {
+                    items(items = state.movies, key = { it.imdb ?: it.title }) { movie ->
+                        MovieResultCard(
+                            movie = movie,
+                            expanded = state.expandedTitle == movie.title,
+                            onExpand = { onExpand(movie.title) },
+                            onDownload = { torrent -> onDownloadMovie(movie, torrent) },
+                            onWatchlistAdd = { onWatchlistAdd(movie) },
+                        )
+                    }
+                }
+            else ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding =
+                        PaddingValues(
+                            start = spacings.medium,
+                            end = spacings.medium,
+                            top = spacings.small,
+                            bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(spacings.small),
+                ) {
+                    items(items = state.tvResults) { result ->
+                        TvResultRow(result = result, onDownload = { onDownloadTv(result) })
+                    }
+                }
+        }
+    }
+}
+
+@Composable
+private fun SimklResultCard(
+    result: TheaterSimklResult,
+    onWatchlist: () -> Unit,
+    onWatched: () -> Unit,
+) {
+    val spacings = LocalSpacings.current
+    // The tracker endpoints key off TMDB, so a result without one cannot be acted on.
+    val actionsEnabled = result.tmdb != null
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+        ) {
+            Poster(url = result.poster, modifier = Modifier.width(72.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text =
+                        listOfNotNull(
+                                result.year?.toString(),
+                                result.rating?.let { String.format(Locale.US, "\u2605 %.1f", it) },
+                            )
+                            .joinToString(" \u00b7 ")
+                            .ifEmpty { "\u2014" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(spacings.small)) {
+                    TextButton(onClick = onWatchlist, enabled = actionsEnabled) {
+                        Text(text = "+ Watchlist")
+                    }
+                    TextButton(onClick = onWatched, enabled = actionsEnabled) {
+                        Text(text = "Mark watched")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MovieResultCard(
+    movie: TheaterMovie,
+    expanded: Boolean,
+    onExpand: () -> Unit,
+    onDownload: (TheaterTorrent) -> Unit,
+    onWatchlistAdd: () -> Unit,
+) {
+    val spacings = LocalSpacings.current
+
+    Card(modifier = Modifier.fillMaxWidth().clickable { onExpand() }) {
+        Column(modifier = Modifier.padding(spacings.small)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(spacings.small)) {
+                Poster(url = movie.poster, modifier = Modifier.width(72.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = movie.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = movie.subtitle(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = onWatchlistAdd) { Text(text = "+ Watchlist") }
+                }
+            }
+
+            if (expanded) {
+                if (movie.torrents.isEmpty()) {
+                    Text(
+                        text = "No torrents available.",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = spacings.small),
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.padding(top = spacings.small),
+                        verticalArrangement = Arrangement.spacedBy(spacings.extraSmall),
+                    ) {
+                        movie.torrents.forEach { torrent ->
+                            OutlinedButton(
+                                onClick = { onDownload(torrent) },
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(text = torrent.describe())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TvResultRow(result: TheaterTvResult, onDownload: () -> Unit) {
+    val spacings = LocalSpacings.current
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = result.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text =
+                        listOfNotNull(
+                                result.quality,
+                                result.size,
+                                "${result.seeds} seeds",
+                            )
+                            .joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            OutlinedButton(onClick = onDownload) { Text(text = "Download") }
+        }
+    }
+}
+
+@Composable
+private fun DownloadsSection(
+    state: TheaterDownloadsState,
+    innerPadding: PaddingValues,
+    onPauseResume: (TheaterDownload) -> Unit,
+    onDelete: (TheaterDownload) -> Unit,
+) {
+    val spacings = LocalSpacings.current
+    var pendingDelete by remember { mutableStateOf<TheaterDownload?>(null) }
+
+    pendingDelete?.let { download ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(text = "Delete download?") },
+            text = {
+                Text(text = "${download.name} and its files will be removed from the server.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(download)
+                        pendingDelete = null
+                    }
+                ) {
+                    Text(text = "Delete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text(text = "Cancel") }
+            },
+        )
+    }
+
+    when {
+        state.isLoading && state.downloads.isEmpty() -> CenteredLoading()
+        state.error != null && state.downloads.isEmpty() ->
+            CenteredMessage(text = state.error, isError = true)
+        state.downloads.isEmpty() -> CenteredMessage(text = "Nothing is downloading right now.")
+        else ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding =
+                    PaddingValues(
+                        start = spacings.medium,
+                        end = spacings.medium,
+                        top = spacings.small,
+                        bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(spacings.small),
+            ) {
+                state.error?.let { error ->
+                    item {
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                }
+                items(items = state.downloads, key = { it.hash }) { download ->
+                    DownloadRow(
+                        download = download,
+                        onPauseResume = { onPauseResume(download) },
+                        onDelete = { pendingDelete = download },
+                    )
+                }
+            }
+    }
+}
+
+@Composable
+private fun DownloadRow(
+    download: TheaterDownload,
+    onPauseResume: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val spacings = LocalSpacings.current
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            verticalArrangement = Arrangement.spacedBy(spacings.extraSmall),
+        ) {
+            Text(
+                text = download.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            LinearProgressIndicator(
+                progress = { (download.progress / 100.0).toFloat().coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = download.statusLine(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(spacings.small)) {
+                TextButton(onClick = onPauseResume) {
+                    Text(text = if (download.isPaused) "Resume" else "Pause")
+                }
+                TextButton(onClick = onDelete) {
+                    Text(text = "Delete", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WatchlistSection(
+    state: TheaterWatchlistState,
+    innerPadding: PaddingValues,
+    onRefresh: () -> Unit,
+    onRemove: (TheaterWatchlistMovie) -> Unit,
+) {
+    val spacings = LocalSpacings.current
+
+    when {
+        state.isLoading && state.movies.isEmpty() -> CenteredLoading()
+        state.error != null && state.movies.isEmpty() ->
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = state.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                TextButton(onClick = onRefresh) { Text(text = "Retry") }
+            }
+        !state.authorized ->
+            CenteredMessage(text = "Not authorized — sign in on the theater server.")
+        state.movies.isEmpty() ->
+            CenteredMessage(text = "Your watchlist is empty — add movies from Search.")
+        else ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding =
+                    PaddingValues(
+                        start = spacings.medium,
+                        end = spacings.medium,
+                        top = spacings.small,
+                        bottom = innerPadding.calculateBottomPadding() + spacings.medium,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(spacings.small),
+            ) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = onRefresh) { Text(text = "Refresh") }
+                    }
+                }
+                items(items = state.movies, key = { it.tmdb ?: it.title.hashCode() }) { movie ->
+                    WatchlistRow(movie = movie, onRemove = { onRemove(movie) })
+                }
+            }
+    }
+}
+
+@Composable
+private fun WatchlistRow(movie: TheaterWatchlistMovie, onRemove: () -> Unit) {
+    val spacings = LocalSpacings.current
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(spacings.small),
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Poster(url = movie.poster, modifier = Modifier.width(56.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = movie.title, style = MaterialTheme.typography.titleSmall)
+                movie.year?.let {
+                    Text(
+                        text = it.toString(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (movie.owned) {
+                Text(
+                    text = "In library",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier =
+                        Modifier.clip(MaterialTheme.shapes.small)
+                            .background(MaterialTheme.colorScheme.primaryContainer)
+                            .padding(horizontal = spacings.small, vertical = spacings.extraSmall),
+                )
+            }
+            TextButton(onClick = onRemove, enabled = movie.tmdb != null) {
+                Text(text = "Remove", color = MaterialTheme.colorScheme.error)
+            }
+        }
+    }
+}
+
+@Composable
+private fun Poster(url: String?, modifier: Modifier = Modifier) {
+    Box(
+        modifier =
+            modifier
+                .aspectRatio(2f / 3f)
+                .clip(MaterialTheme.shapes.small)
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        if (url != null) {
+            AsyncImage(model = url, contentDescription = null, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
+@Composable
+private fun CenteredLoading() {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        CircularProgressIndicator()
+    }
+}
+
+@Composable
+private fun CenteredMessage(text: String, isError: Boolean = false) {
+    val spacings = LocalSpacings.current
+
+    Box(
+        modifier = Modifier.fillMaxSize().padding(spacings.default),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color =
+                if (isError) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun TheaterTab.label(): String =
+    when (this) {
+        TheaterTab.SEARCH -> "Search"
+        TheaterTab.DOWNLOADS -> "Downloads"
+        TheaterTab.WATCHLIST -> "Watchlist"
+    }
+
+private fun TheaterMovie.subtitle(): String =
+    listOfNotNull(year?.toString(), rating?.let { String.format(Locale.US, "★ %.1f", it) })
+        .joinToString(" · ")
+        .ifEmpty { "—" }
+
+private fun TheaterTorrent.describe(): String =
+    listOfNotNull(quality, type, size, "${seeds} seeds").joinToString(" · ")
+
+private fun TheaterDownload.statusLine(): String {
+    val percent = String.format(Locale.US, "%.1f%%", progress)
+    val speed = String.format(Locale.US, "%.2f MB/s", dlspeed / 1_000_000.0)
+    return listOf(percent, state, speed, "$seeds seeds", formatEta(eta)).joinToString(" · ")
+}
+
+private fun formatEta(seconds: Long): String {
+    if (seconds <= 0L || seconds >= TheaterDownload.ETA_UNKNOWN) return "ETA —"
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    return when {
+        hours > 0 -> "ETA ${hours}h ${minutes}m"
+        minutes > 0 -> "ETA ${minutes}m"
+        else -> "ETA ${seconds}s"
+    }
 }
