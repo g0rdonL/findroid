@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -134,6 +135,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
                         onSourceChange = viewModel::onSourceChange,
                         onSearch = viewModel::search,
                         onExpand = viewModel::onResultExpand,
+                        onPlayMovie = viewModel::playMovie,
                         onDownloadMovie = viewModel::addMovieTorrent,
                         onDownloadTv = viewModel::addTvTorrent,
                         onWatchlistAdd = viewModel::addToWatchlist,
@@ -168,6 +170,7 @@ private fun SearchSection(
     onSourceChange: (SearchSource) -> Unit,
     onSearch: () -> Unit,
     onExpand: (String?) -> Unit,
+    onPlayMovie: (TheaterMovie) -> Unit,
     onDownloadMovie: (TheaterMovie, TheaterTorrent) -> Unit,
     onDownloadTv: (TheaterTvResult) -> Unit,
     onWatchlistAdd: (TheaterMovie) -> Unit,
@@ -289,6 +292,7 @@ private fun SearchSection(
                             movie = movie,
                             expanded = state.expandedTitle == movie.title,
                             onExpand = { onExpand(movie.title) },
+                            onPlay = { onPlayMovie(movie) },
                             onDownload = { torrent -> onDownloadMovie(movie, torrent) },
                             onWatchlistAdd = { onWatchlistAdd(movie) },
                         )
@@ -366,6 +370,7 @@ private fun MovieResultCard(
     movie: TheaterMovie,
     expanded: Boolean,
     onExpand: () -> Unit,
+    onPlay: () -> Unit,
     onDownload: (TheaterTorrent) -> Unit,
     onWatchlistAdd: () -> Unit,
 ) {
@@ -388,6 +393,16 @@ private fun MovieResultCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(onClick = onWatchlistAdd) { Text(text = "+ Watchlist") }
+                }
+            }
+
+            // Already in the library: offer playback before any of the download options.
+            if (movie.owned) {
+                Button(
+                    onClick = onPlay,
+                    modifier = Modifier.fillMaxWidth().padding(top = spacings.small),
+                ) {
+                    Text(text = "▶ Play")
                 }
             }
 
@@ -704,7 +719,11 @@ private fun TheaterTab.label(): String =
     }
 
 private fun TheaterMovie.subtitle(): String =
-    listOfNotNull(year?.toString(), rating?.let { String.format(Locale.US, "★ %.1f", it) })
+    listOfNotNull(
+            year?.toString(),
+            rating?.let { String.format(Locale.US, "★ %.1f", it) },
+            "In library".takeIf { owned },
+        )
         .joinToString(" · ")
         .ifEmpty { "—" }
 

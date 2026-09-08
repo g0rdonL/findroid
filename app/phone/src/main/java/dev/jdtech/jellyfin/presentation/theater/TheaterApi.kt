@@ -32,6 +32,10 @@ data class TheaterMovie(
     val year: Int? = null,
     val rating: Double? = null,
     val imdb: String? = null,
+    val tmdb: Int? = null,
+    // Older theater servers omit the ownership fields entirely.
+    val owned: Boolean = false,
+    val folder: String? = null,
     val poster: String? = null,
     val torrents: List<TheaterTorrent> = emptyList(),
 )
@@ -148,6 +152,11 @@ class TheaterApi @Inject constructor() {
 
     suspend fun addTvTorrent(hash: String, name: String) {
         postForm("/api/torrent/add/tv", "hash" to hash, "name" to name)
+    }
+
+    /** Starts playback of an already downloaded movie on the theater TV. */
+    suspend fun playMovie(folder: String) {
+        postForm("/api/play", "folder" to folder)
     }
 
     suspend fun torrentAction(action: String, hash: String) {

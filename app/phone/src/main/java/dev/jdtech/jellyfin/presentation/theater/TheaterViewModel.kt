@@ -163,6 +163,16 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
         }
     }
 
+    /** Plays a movie the theater server already has on disk. */
+    fun playMovie(movie: TheaterMovie) {
+        val folder = movie.folder
+        if (folder.isNullOrBlank()) {
+            _messages.value = "No library folder for ${movie.title}"
+            return
+        }
+        runAction(successMessage = "Playing ${movie.title} on TV") { api.playMovie(folder) }
+    }
+
     fun addToWatchlist(movie: TheaterMovie) {
         val imdb = movie.imdb
         if (imdb.isNullOrBlank()) {
