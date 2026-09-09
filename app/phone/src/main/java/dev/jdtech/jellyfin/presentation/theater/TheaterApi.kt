@@ -54,6 +54,60 @@ data class TheaterTvResult(
 @Serializable
 private data class TvSearchResponse(val results: List<TheaterTvResult> = emptyList())
 
+/** A show folder the theater server already has on disk. */
+@Serializable
+data class TheaterTvSeries(
+    val name: String = "",
+    val folder: String = "",
+    // Episode files on disk, and how many season folders they span.
+    val count: Int = 0,
+    val seasons: Int = 0,
+    val poster: String? = null,
+    // Null when the server could not resolve the folder name to a TMDB show.
+    val tmdb: Int? = null,
+)
+
+@Serializable private data class TvLibraryResponse(val series: List<TheaterTvSeries> = emptyList())
+
+/** SimKL watch progress for a show. Absent when the show is not on any list. */
+@Serializable
+data class TheaterSimklProgress(
+    val status: String? = null,
+    @SerialName("watched_count") val watchedCount: Int = 0,
+    @SerialName("total_count") val totalCount: Int = 0,
+    @SerialName("last_watched") val lastWatched: String? = null,
+    @SerialName("next_to_watch") val nextToWatch: String? = null,
+)
+
+@Serializable
+data class TheaterEpisode(
+    val season: Int? = null,
+    val episode: Int? = null,
+    val name: String? = null,
+    // ISO date, e.g. "2022-02-04".
+    @SerialName("air_date") val airDate: String? = null,
+    val watched: Boolean = false,
+)
+
+@Serializable
+data class TheaterShowDetails(
+    val tmdb: Int? = null,
+    val title: String = "",
+    val overview: String? = null,
+    val year: Int? = null,
+    val status: String? = null,
+    val genres: List<String> = emptyList(),
+    @SerialName("tmdb_rating") val tmdbRating: Double? = null,
+    @SerialName("tmdb_votes") val tmdbVotes: Int? = null,
+    @SerialName("imdb_rating") val imdbRating: Double? = null,
+    @SerialName("imdb_id") val imdbId: String? = null,
+    val poster: String? = null,
+    val simkl: TheaterSimklProgress? = null,
+    /** Downloaded in the local library. */
+    val owned: Boolean = false,
+    val episodes: List<TheaterEpisode> = emptyList(),
+)
+
 @Serializable
 data class TheaterDownload(
     val hash: String = "",
@@ -173,6 +227,17 @@ class TheaterApi @Inject constructor() {
     suspend fun searchTv(query: String): List<TheaterTvResult> {
         val body = get("/api/search/tv?q=${query.urlEncoded()}")
         return json.decodeFromString<TvSearchResponse>(body).results
+    }
+
+    /** Shows already downloaded to the library, newest folder scan first. */
+    suspend fun tvLibrary(): List<TheaterTvSeries> {
+        val body = get("/api/tv")
+        return json.decodeFromString<TvLibraryResponse>(body).series
+    }
+
+    suspend fun showDetails(tmdb: Int): TheaterShowDetails {
+        val body = get("/api/show/details?tmdb=$tmdb")
+        return json.decodeFromString<TheaterShowDetails>(body)
     }
 
     suspend fun downloads(): List<TheaterDownload> {

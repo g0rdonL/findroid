@@ -1,6 +1,8 @@
 package dev.jdtech.jellyfin.presentation.theater
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,6 +27,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -53,6 +57,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -73,6 +78,8 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
     val downloadsState by viewModel.downloadsState.collectAsStateWithLifecycle()
     val watchlistState by viewModel.watchlistState.collectAsStateWithLifecycle()
     val watchedState by viewModel.watchedState.collectAsStateWithLifecycle()
+    val libraryState by viewModel.libraryState.collectAsStateWithLifecycle()
+    val detailsState by viewModel.detailsState.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf(TheaterTab.SEARCH) }
@@ -90,9 +97,15 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
                 viewModel.stopPollingDownloads()
                 viewModel.loadWatched()
             }
+            TheaterTab.LIBRARY -> {
+                viewModel.stopPollingDownloads()
+                viewModel.loadTvLibrary()
+            }
             TheaterTab.SEARCH -> viewModel.stopPollingDownloads()
         }
     }
+
+    BackHandler(enabled = detailsState.isOpen) { viewModel.closeShowDetails() }
 
     DisposableEffect(Unit) { onDispose { viewModel.stopPollingDownloads() } }
 
@@ -111,7 +124,25 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
                 .nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             TopAppBar(
-                title = { Text(text = stringResource(CoreR.string.title_theater)) },
+                title = {
+                    Text(
+                        text =
+                            detailsState.selectedShow?.title
+                                ?: stringResource(CoreR.string.title_theater),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                navigationIcon = {
+                    if (detailsState.isOpen) {
+                        IconButton(onClick = viewModel::closeShowDetails) {
+                            Icon(
+                                painter = painterResource(CoreR.drawable.ic_arrow_left),
+                                contentDescription = null,
+                            )
+                        }
+                    }
+                },
                 windowInsets = WindowInsets.statusBars.union(WindowInsets.displayCutout),
                 scrollBehavior = scrollBehavior,
             )
@@ -122,56 +153,70 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
         Column(
             modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
         ) {
-            SecondaryScrollableTabRow(selectedTabIndex = selectedTab.ordinal) {
-                TheaterTab.entries.forEach { tab ->
-                    Tab(
-                        selected = selectedTab == tab,
-                        onClick = { selectedTab = tab },
-                        text = { Text(text = tab.label()) },
-                    )
+            // The details pane replaces the tab content in place; the top bar owns the back arrow.
+            if (detailsState.isOpen) {
+                ShowDetailsSection(state = detailsState, innerPadding = innerPadding)
+            } else {
+                SecondaryScrollableTabRow(selectedTabIndex = selectedTab.ordinal) {
+                    TheaterTab.entries.forEach { tab ->
+                        Tab(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            text = { Text(text = tab.label()) },
+                        )
+                    }
                 }
-            }
 
-            when (selectedTab) {
-                TheaterTab.SEARCH ->
-                    SearchSection(
-                        state = searchState,
-                        innerPadding = innerPadding,
-                        onQueryChange = viewModel::onQueryChange,
-                        onModeChange = viewModel::onModeChange,
-                        onSourceChange = viewModel::onSourceChange,
-                        onSearch = viewModel::search,
-                        onExpand = viewModel::onResultExpand,
-                        onPlayMovie = viewModel::playMovie,
-                        onDownloadMovie = viewModel::addMovieTorrent,
-                        onDownloadTv = viewModel::addTvTorrent,
-                        onWatchlistAdd = viewModel::addToWatchlist,
-                        onSimklWatchlist = viewModel::addSimklToWatchlist,
-                        onSimklWatched = viewModel::markWatched,
-                    )
-                TheaterTab.DOWNLOADS ->
-                    DownloadsSection(
-                        state = downloadsState,
-                        innerPadding = innerPadding,
-                        onPauseResume = viewModel::pauseOrResume,
-                        onDelete = viewModel::delete,
-                    )
-                TheaterTab.WATCHLIST ->
-                    WatchlistSection(
-                        state = watchlistState,
-                        innerPadding = innerPadding,
-                        onKindChange = viewModel::onWatchlistKindChange,
-                        onRefresh = viewModel::loadWatchlist,
-                        onRemove = viewModel::removeFromWatchlist,
-                        onMarkWatched = viewModel::markWatchedFromWatchlist,
-                    )
-                TheaterTab.WATCHED ->
-                    WatchedSection(
-                        state = watchedState,
-                        innerPadding = innerPadding,
-                        onKindChange = viewModel::onWatchedKindChange,
-                        onRefresh = viewModel::loadWatched,
-                    )
+                when (selectedTab) {
+                    TheaterTab.SEARCH ->
+                        SearchSection(
+                            state = searchState,
+                            innerPadding = innerPadding,
+                            onQueryChange = viewModel::onQueryChange,
+                            onModeChange = viewModel::onModeChange,
+                            onSourceChange = viewModel::onSourceChange,
+                            onSearch = viewModel::search,
+                            onExpand = viewModel::onResultExpand,
+                            onPlayMovie = viewModel::playMovie,
+                            onDownloadMovie = viewModel::addMovieTorrent,
+                            onDownloadTv = viewModel::addTvTorrent,
+                            onWatchlistAdd = viewModel::addToWatchlist,
+                            onSimklWatchlist = viewModel::addSimklToWatchlist,
+                            onSimklWatched = viewModel::markWatched,
+                        )
+                    TheaterTab.DOWNLOADS ->
+                        DownloadsSection(
+                            state = downloadsState,
+                            innerPadding = innerPadding,
+                            onPauseResume = viewModel::pauseOrResume,
+                            onDelete = viewModel::delete,
+                        )
+                    TheaterTab.WATCHLIST ->
+                        WatchlistSection(
+                            state = watchlistState,
+                            innerPadding = innerPadding,
+                            onKindChange = viewModel::onWatchlistKindChange,
+                            onRefresh = viewModel::loadWatchlist,
+                            onRemove = viewModel::removeFromWatchlist,
+                            onMarkWatched = viewModel::markWatchedFromWatchlist,
+                            onShowClick = viewModel::openShowDetails,
+                        )
+                    TheaterTab.WATCHED ->
+                        WatchedSection(
+                            state = watchedState,
+                            innerPadding = innerPadding,
+                            onKindChange = viewModel::onWatchedKindChange,
+                            onRefresh = viewModel::loadWatched,
+                            onShowClick = viewModel::openShowDetails,
+                        )
+                    TheaterTab.LIBRARY ->
+                        TvLibrarySection(
+                            state = libraryState,
+                            innerPadding = innerPadding,
+                            onSeriesClick = viewModel::openShowDetails,
+                            onRefresh = viewModel::loadTvLibrary,
+                        )
+                }
             }
         }
     }
@@ -345,36 +390,36 @@ private fun SimklResultCard(
     val actionsEnabled = result.tmdb != null
 
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
-            horizontalArrangement = Arrangement.spacedBy(spacings.small),
-        ) {
-            Poster(url = result.poster, modifier = Modifier.width(72.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = result.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text =
-                        listOfNotNull(
-                                result.year?.toString(),
-                                result.rating?.let { String.format(Locale.US, "\u2605 %.1f", it) },
-                            )
-                            .joinToString(" \u00b7 ")
-                            .ifEmpty { "\u2014" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(spacings.small)) {
-                    TextButton(onClick = onWatchlist, enabled = actionsEnabled) {
-                        Text(text = "+ Watchlist")
-                    }
-                    TextButton(onClick = onWatched, enabled = actionsEnabled) {
-                        Text(text = "Mark watched")
-                    }
+        Column(modifier = Modifier.fillMaxWidth().padding(spacings.medium)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(spacings.small)) {
+                Poster(url = result.poster, modifier = Modifier.width(72.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = result.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text =
+                            listOfNotNull(
+                                    result.year?.toString(),
+                                    result.rating?.let { String.format(Locale.US, "\u2605 %.1f", it) },
+                                )
+                                .joinToString(" \u00b7 ")
+                                .ifEmpty { "\u2014" },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            // Two buttons beside a weighted text column squeeze the title, so they get a row.
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TextButton(onClick = onWatchlist, enabled = actionsEnabled) {
+                    Text(text = "+ Watchlist")
+                }
+                TextButton(onClick = onWatched, enabled = actionsEnabled) {
+                    Text(text = "Mark watched")
                 }
             }
         }
@@ -602,6 +647,7 @@ private fun WatchlistSection(
     onRefresh: () -> Unit,
     onRemove: (TheaterWatchlistMovie) -> Unit,
     onMarkWatched: (TheaterWatchlistMovie) -> Unit,
+    onShowClick: (Int) -> Unit,
 ) {
     val spacings = LocalSpacings.current
 
@@ -655,10 +701,15 @@ private fun WatchlistSection(
                             items = state.visibleMovies,
                             key = { it.tmdb ?: it.title.hashCode() },
                         ) { movie ->
+                            // Details are TV-only, so movie rows stay non-clickable.
+                            val tmdb = movie.tmdb
+                            val openDetails: (() -> Unit)? =
+                                if (movie.isShow && tmdb != null) ({ onShowClick(tmdb) }) else null
                             WatchlistRow(
                                 movie = movie,
                                 onMarkWatched = { onMarkWatched(movie) },
                                 onRemove = { onRemove(movie) },
+                                onOpenDetails = openDetails,
                             )
                         }
                     }
@@ -704,6 +755,7 @@ private fun WatchedSection(
     innerPadding: PaddingValues,
     onKindChange: (TitleKind) -> Unit,
     onRefresh: () -> Unit,
+    onShowClick: (Int) -> Unit,
 ) {
     val spacings = LocalSpacings.current
 
@@ -778,7 +830,7 @@ private fun WatchedSection(
                                         items = state.shows,
                                         key = { it.tmdb ?: it.title.hashCode() },
                                     ) { show ->
-                                        WatchedShowRow(show = show)
+                                        WatchedShowRow(show = show, onShowClick = onShowClick)
                                     }
                                 }
                             }
@@ -789,7 +841,7 @@ private fun WatchedSection(
 }
 
 @Composable
-private fun SectionHeader(text: String) {
+internal fun SectionHeader(text: String) {
     val spacings = LocalSpacings.current
 
     Text(
@@ -865,10 +917,15 @@ private fun WatchedEpisodeRow(episode: TheaterWatchedEpisode) {
 }
 
 @Composable
-private fun WatchedShowRow(show: TheaterWatchedShow) {
+private fun WatchedShowRow(show: TheaterWatchedShow, onShowClick: (Int) -> Unit) {
     val spacings = LocalSpacings.current
+    val tmdb = show.tmdb
 
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(
+        onClick = { tmdb?.let(onShowClick) },
+        enabled = tmdb != null,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(spacings.medium),
             horizontalArrangement = Arrangement.spacedBy(spacings.small),
@@ -893,54 +950,76 @@ private fun WatchedShowRow(show: TheaterWatchedShow) {
     }
 }
 
+/**
+ * Poster and title get a row of their own so the title column always has the full remaining
+ * width; the actions sit right-aligned underneath. Tapping the poster/title row opens the show
+ * details, which the action buttons deliberately do not.
+ */
 @Composable
 private fun WatchlistRow(
     movie: TheaterWatchlistMovie,
     onMarkWatched: () -> Unit,
     onRemove: () -> Unit,
+    onOpenDetails: (() -> Unit)? = null,
 ) {
     val spacings = LocalSpacings.current
 
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
-            horizontalArrangement = Arrangement.spacedBy(spacings.small),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Poster(url = movie.poster, modifier = Modifier.width(56.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = movie.title, style = MaterialTheme.typography.titleSmall)
-                movie.year?.let {
+        Column(modifier = Modifier.fillMaxWidth().padding(spacings.medium)) {
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .clickable(enabled = onOpenDetails != null) { onOpenDetails?.invoke() },
+                horizontalArrangement = Arrangement.spacedBy(spacings.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Poster(url = movie.poster, modifier = Modifier.width(56.dp))
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = it.toString(),
+                        text = movie.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = movie.year?.toString() ?: "\u2014",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
-            if (movie.owned) {
-                BaseBadge {
-                    Text(
-                        text = "In library",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier =
-                            Modifier.align(Alignment.Center).padding(horizontal = spacings.small),
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (movie.owned) {
+                    BaseBadge {
+                        Text(
+                            text = "In library",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            modifier =
+                                Modifier.align(Alignment.Center)
+                                    .padding(horizontal = spacings.small),
+                        )
+                    }
+                    Box(modifier = Modifier.weight(1f))
                 }
-            }
-            TextButton(onClick = onMarkWatched, enabled = movie.tmdb != null) {
-                Text(text = "\u2713 Watched")
-            }
-            TextButton(onClick = onRemove, enabled = movie.tmdb != null) {
-                Text(text = "Remove", color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = onMarkWatched, enabled = movie.tmdb != null) {
+                    Text(text = "\u2713 Watched")
+                }
+                TextButton(onClick = onRemove, enabled = movie.tmdb != null) {
+                    Text(text = "Remove", color = MaterialTheme.colorScheme.error)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun Poster(url: String?, modifier: Modifier = Modifier) {
+internal fun Poster(url: String?, modifier: Modifier = Modifier) {
     AsyncImage(
         model = url,
         contentDescription = null,
@@ -954,14 +1033,14 @@ private fun Poster(url: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun CenteredLoading() {
+internal fun CenteredLoading() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         CircularProgressIndicator()
     }
 }
 
 @Composable
-private fun CenteredMessage(text: String, isError: Boolean = false) {
+internal fun CenteredMessage(text: String, isError: Boolean = false) {
     val spacings = LocalSpacings.current
 
     Box(
@@ -984,6 +1063,7 @@ private fun TheaterTab.label(): String =
         TheaterTab.DOWNLOADS -> "Downloads"
         TheaterTab.WATCHLIST -> "Watchlist"
         TheaterTab.WATCHED -> "Watched"
+        TheaterTab.LIBRARY -> "Library"
     }
 
 private fun TheaterMovie.subtitle(): String =

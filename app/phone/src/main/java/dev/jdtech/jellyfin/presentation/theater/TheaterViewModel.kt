@@ -17,6 +17,7 @@ enum class TheaterTab {
     DOWNLOADS,
     WATCHLIST,
     WATCHED,
+    LIBRARY,
 }
 
 enum class SearchMode {
@@ -80,6 +81,23 @@ data class TheaterWatchedState(
         get() = movies.isEmpty() && shows.isEmpty() && episodes.isEmpty()
 }
 
+data class TheaterLibraryState(
+    val isLoading: Boolean = false,
+    val series: List<TheaterTvSeries> = emptyList(),
+    val error: String? = null,
+)
+
+/**
+ * The show details pane, rendered in place of the tab content. [isOpen] stays true while the
+ * request is in flight so the back arrow and spinner appear immediately on tap.
+ */
+data class TheaterDetailsState(
+    val isOpen: Boolean = false,
+    val isLoading: Boolean = false,
+    val selectedShow: TheaterShowDetails? = null,
+    val error: String? = null,
+)
+
 @HiltViewModel
 class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewModel() {
     private val _searchState = MutableStateFlow(TheaterSearchState())
@@ -93,6 +111,12 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
 
     private val _watchedState = MutableStateFlow(TheaterWatchedState())
     val watchedState = _watchedState.asStateFlow()
+
+    private val _libraryState = MutableStateFlow(TheaterLibraryState())
+    val libraryState = _libraryState.asStateFlow()
+
+    private val _detailsState = MutableStateFlow(TheaterDetailsState())
+    val detailsState = _detailsState.asStateFlow()
 
     private val _messages = MutableStateFlow<String?>(null)
     val messages = _messages.asStateFlow()
@@ -336,6 +360,35 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
                 _watchedState.update { it.copy(isLoading = false, error = e.errorText()) }
             }
         }
+    }
+
+    fun loadTvLibrary() {
+        viewModelScope.launch {
+            _libraryState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val series = api.tvLibrary()
+                _libraryState.update { it.copy(isLoading = false, series = series) }
+            } catch (e: Exception) {
+                _libraryState.update { it.copy(isLoading = false, error = e.errorText()) }
+            }
+        }
+    }
+
+    /** Opens the show details pane over the current tab. */
+    fun openShowDetails(tmdb: Int) {
+        viewModelScope.launch {
+            _detailsState.value = TheaterDetailsState(isOpen = true, isLoading = true)
+            try {
+                val show = api.showDetails(tmdb)
+                _detailsState.update { it.copy(isLoading = false, selectedShow = show) }
+            } catch (e: Exception) {
+                _detailsState.update { it.copy(isLoading = false, error = e.errorText()) }
+            }
+        }
+    }
+
+    fun closeShowDetails() {
+        _detailsState.value = TheaterDetailsState()
     }
 
     fun onMessageShown() {
