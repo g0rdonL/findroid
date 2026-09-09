@@ -62,6 +62,8 @@ import coil3.compose.AsyncImage
 import dev.jdtech.jellyfin.core.R as CoreR
 import dev.jdtech.jellyfin.presentation.film.components.BaseBadge
 import dev.jdtech.jellyfin.presentation.theme.LocalSpacings
+import java.text.DateFormat
+import java.util.Date
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -70,6 +72,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
     val searchState by viewModel.searchState.collectAsStateWithLifecycle()
     val downloadsState by viewModel.downloadsState.collectAsStateWithLifecycle()
     val watchlistState by viewModel.watchlistState.collectAsStateWithLifecycle()
+    val watchedState by viewModel.watchedState.collectAsStateWithLifecycle()
     val message by viewModel.messages.collectAsStateWithLifecycle()
 
     var selectedTab by remember { mutableStateOf(TheaterTab.SEARCH) }
@@ -82,6 +85,10 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
             TheaterTab.WATCHLIST -> {
                 viewModel.stopPollingDownloads()
                 viewModel.loadWatchlist()
+            }
+            TheaterTab.WATCHED -> {
+                viewModel.stopPollingDownloads()
+                viewModel.loadWatched()
             }
             TheaterTab.SEARCH -> viewModel.stopPollingDownloads()
         }
@@ -153,8 +160,16 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
                     WatchlistSection(
                         state = watchlistState,
                         innerPadding = innerPadding,
+                        onKindChange = viewModel::onWatchlistKindChange,
                         onRefresh = viewModel::loadWatchlist,
                         onRemove = viewModel::removeFromWatchlist,
+                    )
+                TheaterTab.WATCHED ->
+                    WatchedSection(
+                        state = watchedState,
+                        innerPadding = innerPadding,
+                        onKindChange = viewModel::onWatchedKindChange,
+                        onRefresh = viewModel::loadWatched,
                     )
             }
         }
@@ -582,6 +597,7 @@ private fun DownloadRow(
 private fun WatchlistSection(
     state: TheaterWatchlistState,
     innerPadding: PaddingValues,
+    onKindChange: (TitleKind) -> Unit,
     onRefresh: () -> Unit,
     onRemove: (TheaterWatchlistMovie) -> Unit,
 ) {
@@ -605,31 +621,269 @@ private fun WatchlistSection(
         !state.authorized ->
             CenteredMessage(text = "Not authorized — sign in on the theater server.")
         state.movies.isEmpty() ->
-            CenteredMessage(text = "Your watchlist is empty — add movies from Search.")
+            CenteredMessage(text = "Your watchlist is empty — add titles from Search.")
         else ->
-            LazyColumn(
+            Column(modifier = Modifier.fillMaxSize()) {
+                KindSegmentRow(
+                    selected = state.kind,
+                    onKindChange = onKindChange,
+                    onRefresh = onRefresh,
+                )
+                if (state.visibleMovies.isEmpty()) {
+                    CenteredMessage(
+                        text =
+                            when (state.kind) {
+                                TitleKind.MOVIES -> "No movies on your watchlist."
+                                TitleKind.TV -> "No shows on your watchlist."
+                            }
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding =
+                            PaddingValues(
+                                start = spacings.default,
+                                end = spacings.default,
+                                top = spacings.small,
+                                bottom = innerPadding.calculateBottomPadding() + spacings.default,
+                            ),
+                        verticalArrangement = Arrangement.spacedBy(spacings.small),
+                    ) {
+                        items(
+                            items = state.visibleMovies,
+                            key = { it.tmdb ?: it.title.hashCode() },
+                        ) { movie ->
+                            WatchlistRow(movie = movie, onRemove = { onRemove(movie) })
+                        }
+                    }
+                }
+            }
+    }
+}
+
+/** Movies/TV segment picker shared by the watchlist and watched tabs. */
+@Composable
+private fun KindSegmentRow(
+    selected: TitleKind,
+    onKindChange: (TitleKind) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val spacings = LocalSpacings.current
+
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = spacings.default, vertical = spacings.extraSmall),
+        horizontalArrangement = Arrangement.spacedBy(spacings.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilterChip(
+            selected = selected == TitleKind.MOVIES,
+            onClick = { onKindChange(TitleKind.MOVIES) },
+            label = { Text(text = "Movies") },
+        )
+        FilterChip(
+            selected = selected == TitleKind.TV,
+            onClick = { onKindChange(TitleKind.TV) },
+            label = { Text(text = "TV") },
+        )
+        Box(modifier = Modifier.weight(1f))
+        TextButton(onClick = onRefresh) { Text(text = "Refresh") }
+    }
+}
+
+@Composable
+private fun WatchedSection(
+    state: TheaterWatchedState,
+    innerPadding: PaddingValues,
+    onKindChange: (TitleKind) -> Unit,
+    onRefresh: () -> Unit,
+) {
+    val spacings = LocalSpacings.current
+
+    when {
+        state.isLoading && state.isEmpty -> CenteredLoading()
+        state.error != null && state.isEmpty ->
+            Column(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding =
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = state.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                TextButton(onClick = onRefresh) { Text(text = "Retry") }
+            }
+        !state.authorized ->
+            CenteredMessage(text = "Not authorized — sign in on the theater server.")
+        state.isEmpty -> CenteredMessage(text = "Nothing watched yet.")
+        else ->
+            Column(modifier = Modifier.fillMaxSize()) {
+                KindSegmentRow(
+                    selected = state.kind,
+                    onKindChange = onKindChange,
+                    onRefresh = onRefresh,
+                )
+                val contentPadding =
                     PaddingValues(
                         start = spacings.default,
                         end = spacings.default,
                         top = spacings.small,
                         bottom = innerPadding.calculateBottomPadding() + spacings.default,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(spacings.small),
-            ) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End,
-                    ) {
-                        TextButton(onClick = onRefresh) { Text(text = "Refresh") }
-                    }
-                }
-                items(items = state.movies, key = { it.tmdb ?: it.title.hashCode() }) { movie ->
-                    WatchlistRow(movie = movie, onRemove = { onRemove(movie) })
+                    )
+                when (state.kind) {
+                    TitleKind.MOVIES ->
+                        if (state.movies.isEmpty()) {
+                            CenteredMessage(text = "No watched movies.")
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = contentPadding,
+                                verticalArrangement = Arrangement.spacedBy(spacings.small),
+                            ) {
+                                items(
+                                    items = state.movies,
+                                    key = { it.tmdb ?: it.title.hashCode() },
+                                ) { movie ->
+                                    WatchedMovieRow(movie = movie)
+                                }
+                            }
+                        }
+                    TitleKind.TV ->
+                        if (state.episodes.isEmpty() && state.shows.isEmpty()) {
+                            CenteredMessage(text = "No watched shows.")
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = contentPadding,
+                                verticalArrangement = Arrangement.spacedBy(spacings.small),
+                            ) {
+                                if (state.episodes.isNotEmpty()) {
+                                    item { SectionHeader(text = "Recent episodes") }
+                                    items(items = state.episodes) { episode ->
+                                        WatchedEpisodeRow(episode = episode)
+                                    }
+                                }
+                                if (state.shows.isNotEmpty()) {
+                                    item { SectionHeader(text = "Completed shows") }
+                                    items(
+                                        items = state.shows,
+                                        key = { it.tmdb ?: it.title.hashCode() },
+                                    ) { show ->
+                                        WatchedShowRow(show = show)
+                                    }
+                                }
+                            }
+                        }
                 }
             }
+    }
+}
+
+@Composable
+private fun SectionHeader(text: String) {
+    val spacings = LocalSpacings.current
+
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = spacings.extraSmall),
+    )
+}
+
+@Composable
+private fun WatchedMovieRow(movie: TheaterWatchedMovie) {
+    val spacings = LocalSpacings.current
+
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Poster(url = movie.poster, modifier = Modifier.width(56.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = movie.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text =
+                        listOfNotNull(movie.year?.toString(), formatWatchedAt(movie.watchedAt))
+                            .joinToString(" · ")
+                            .ifEmpty { "—" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WatchedEpisodeRow(episode: TheaterWatchedEpisode) {
+    val spacings = LocalSpacings.current
+
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
+            verticalArrangement = Arrangement.spacedBy(spacings.extraSmall),
+        ) {
+            Text(
+                text = episode.showTitle,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text =
+                    listOfNotNull(
+                            episode.episodeCode(),
+                            episode.title,
+                            formatWatchedAt(episode.watchedAt),
+                        )
+                        .joinToString(" · ")
+                        .ifEmpty { "—" },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun WatchedShowRow(show: TheaterWatchedShow) {
+    val spacings = LocalSpacings.current
+
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(spacings.medium),
+            horizontalArrangement = Arrangement.spacedBy(spacings.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = show.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                show.year?.let {
+                    Text(
+                        text = it.toString(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -716,6 +970,7 @@ private fun TheaterTab.label(): String =
         TheaterTab.SEARCH -> "Search"
         TheaterTab.DOWNLOADS -> "Downloads"
         TheaterTab.WATCHLIST -> "Watchlist"
+        TheaterTab.WATCHED -> "Watched"
     }
 
 private fun TheaterMovie.subtitle(): String =
@@ -726,6 +981,18 @@ private fun TheaterMovie.subtitle(): String =
         )
         .joinToString(" · ")
         .ifEmpty { "—" }
+
+/** Formats a unix epoch second timestamp as a short local date, e.g. "Sep 9, 2026". */
+private fun formatWatchedAt(watchedAt: Double?): String? {
+    if (watchedAt == null || watchedAt <= 0.0) return null
+    val date = Date((watchedAt * 1000).toLong())
+    return DateFormat.getDateInstance(DateFormat.MEDIUM).format(date)
+}
+
+private fun TheaterWatchedEpisode.episodeCode(): String? {
+    if (season == null || episode == null) return null
+    return String.format(Locale.US, "S%02dE%02d", season, episode)
+}
 
 private fun TheaterTorrent.describe(): String =
     listOfNotNull(quality, type, size, "${seeds} seeds").joinToString(" · ")

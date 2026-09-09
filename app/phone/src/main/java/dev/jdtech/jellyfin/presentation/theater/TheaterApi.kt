@@ -83,12 +83,51 @@ data class TheaterWatchlistMovie(
     val owned: Boolean = false,
     val folder: String? = null,
     val poster: String? = null,
-)
+    // Older theater servers list movies only and omit the kind entirely.
+    val kind: String? = "movie",
+) {
+    val isShow: Boolean
+        get() = kind.equals("tv", ignoreCase = true)
+}
 
 @Serializable
 data class TheaterWatchlist(
     val authorized: Boolean = false,
     val movies: List<TheaterWatchlistMovie> = emptyList(),
+)
+
+@Serializable
+data class TheaterWatchedMovie(
+    val title: String = "",
+    val tmdb: Int? = null,
+    val year: Int? = null,
+    // Unix epoch seconds. Rows imported before the server tracked timestamps have none.
+    @SerialName("watched_at") val watchedAt: Double? = null,
+    val poster: String? = null,
+)
+
+@Serializable
+data class TheaterWatchedShow(
+    val title: String = "",
+    val year: Int? = null,
+    val tmdb: Int? = null,
+)
+
+@Serializable
+data class TheaterWatchedEpisode(
+    @SerialName("show_title") val showTitle: String = "",
+    val season: Int? = null,
+    val episode: Int? = null,
+    val title: String? = null,
+    @SerialName("watched_at") val watchedAt: Double? = null,
+)
+
+@Serializable
+data class TheaterWatched(
+    val authorized: Boolean = false,
+    val movies: List<TheaterWatchedMovie> = emptyList(),
+    val shows: List<TheaterWatchedShow> = emptyList(),
+    val episodes: List<TheaterWatchedEpisode> = emptyList(),
 )
 
 @Serializable
@@ -144,6 +183,11 @@ class TheaterApi @Inject constructor() {
     suspend fun watchlist(): TheaterWatchlist {
         val body = get("/api/watchlist")
         return json.decodeFromString<TheaterWatchlist>(body)
+    }
+
+    suspend fun watched(): TheaterWatched {
+        val body = get("/api/watched")
+        return json.decodeFromString<TheaterWatched>(body)
     }
 
     suspend fun addMovieTorrent(hash: String, name: String) {

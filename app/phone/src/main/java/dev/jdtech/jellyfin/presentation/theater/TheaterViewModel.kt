@@ -16,9 +16,16 @@ enum class TheaterTab {
     SEARCH,
     DOWNLOADS,
     WATCHLIST,
+    WATCHED,
 }
 
 enum class SearchMode {
+    MOVIES,
+    TV,
+}
+
+/** Movies/TV segmentation shared by the watchlist and watched tabs. */
+enum class TitleKind {
     MOVIES,
     TV,
 }
@@ -52,8 +59,26 @@ data class TheaterWatchlistState(
     val isLoading: Boolean = false,
     val authorized: Boolean = true,
     val movies: List<TheaterWatchlistMovie> = emptyList(),
+    val kind: TitleKind = TitleKind.MOVIES,
     val error: String? = null,
-)
+) {
+    /** Entries belonging to the selected Movies/TV segment. */
+    val visibleMovies: List<TheaterWatchlistMovie>
+        get() = movies.filter { it.isShow == (kind == TitleKind.TV) }
+}
+
+data class TheaterWatchedState(
+    val isLoading: Boolean = false,
+    val authorized: Boolean = true,
+    val movies: List<TheaterWatchedMovie> = emptyList(),
+    val shows: List<TheaterWatchedShow> = emptyList(),
+    val episodes: List<TheaterWatchedEpisode> = emptyList(),
+    val kind: TitleKind = TitleKind.MOVIES,
+    val error: String? = null,
+) {
+    val isEmpty: Boolean
+        get() = movies.isEmpty() && shows.isEmpty() && episodes.isEmpty()
+}
 
 @HiltViewModel
 class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewModel() {
@@ -65,6 +90,9 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
 
     private val _watchlistState = MutableStateFlow(TheaterWatchlistState())
     val watchlistState = _watchlistState.asStateFlow()
+
+    private val _watchedState = MutableStateFlow(TheaterWatchedState())
+    val watchedState = _watchedState.asStateFlow()
 
     private val _messages = MutableStateFlow<String?>(null)
     val messages = _messages.asStateFlow()
@@ -266,6 +294,34 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
                 }
             } catch (e: Exception) {
                 _watchlistState.update { it.copy(isLoading = false, error = e.errorText()) }
+            }
+        }
+    }
+
+    fun onWatchlistKindChange(kind: TitleKind) {
+        _watchlistState.update { it.copy(kind = kind) }
+    }
+
+    fun onWatchedKindChange(kind: TitleKind) {
+        _watchedState.update { it.copy(kind = kind) }
+    }
+
+    fun loadWatched() {
+        viewModelScope.launch {
+            _watchedState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val watched = api.watched()
+                _watchedState.update {
+                    it.copy(
+                        isLoading = false,
+                        authorized = watched.authorized,
+                        movies = watched.movies,
+                        shows = watched.shows,
+                        episodes = watched.episodes,
+                    )
+                }
+            } catch (e: Exception) {
+                _watchedState.update { it.copy(isLoading = false, error = e.errorText()) }
             }
         }
     }
