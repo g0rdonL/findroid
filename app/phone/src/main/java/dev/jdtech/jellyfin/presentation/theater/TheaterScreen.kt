@@ -155,7 +155,13 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
         ) {
             // The details pane replaces the tab content in place; the top bar owns the back arrow.
             if (detailsState.isOpen) {
-                ShowDetailsSection(state = detailsState, innerPadding = innerPadding)
+                ShowDetailsSection(
+                    state = detailsState,
+                    innerPadding = innerPadding,
+                    onUnmarkEpisode = { episode ->
+                        detailsState.selectedShow?.let { viewModel.unmarkEpisode(it, episode) }
+                    },
+                )
             } else {
                 SecondaryScrollableTabRow(selectedTabIndex = selectedTab.ordinal) {
                     TheaterTab.entries.forEach { tab ->
@@ -208,6 +214,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
                             onKindChange = viewModel::onWatchedKindChange,
                             onRefresh = viewModel::loadWatched,
                             onShowClick = viewModel::openShowDetails,
+                            onUnmarkWatched = viewModel::unmarkWatchedRow,
                         )
                     TheaterTab.LIBRARY ->
                         TvLibrarySection(
@@ -756,8 +763,37 @@ private fun WatchedSection(
     onKindChange: (TitleKind) -> Unit,
     onRefresh: () -> Unit,
     onShowClick: (Int) -> Unit,
+    onUnmarkWatched: (String, Int?, String) -> Unit,
 ) {
     val spacings = LocalSpacings.current
+    var pendingUnwatch by remember { mutableStateOf<PendingUnwatch?>(null) }
+
+    pendingUnwatch?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { pendingUnwatch = null },
+            title = { Text(text = "Remove ${pending.title} from watched?") },
+            text = {
+                Text(
+                    text =
+                        "It will be removed from your watched history here and on SimKL " +
+                            "within a few minutes."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onUnmarkWatched(pending.kind, pending.tmdb, pending.title)
+                        pendingUnwatch = null
+                    }
+                ) {
+                    Text(text = "Remove", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingUnwatch = null }) { Text(text = "Cancel") }
+            },
+        )
+    }
 
     when {
         state.isLoading && state.isEmpty -> CenteredLoading()
@@ -805,7 +841,13 @@ private fun WatchedSection(
                                     items = state.movies,
                                     key = { it.tmdb ?: it.title.hashCode() },
                                 ) { movie ->
-                                    WatchedMovieRow(movie = movie)
+                                    WatchedMovieRow(
+                                        movie = movie,
+                                        onRemove = {
+                                            pendingUnwatch =
+                                                PendingUnwatch("movie", movie.tmdb, movie.title)
+                                        },
+                                    )
                                 }
                             }
                         }
@@ -830,7 +872,14 @@ private fun WatchedSection(
                                         items = state.shows,
                                         key = { it.tmdb ?: it.title.hashCode() },
                                     ) { show ->
-                                        WatchedShowRow(show = show, onShowClick = onShowClick)
+                                        WatchedShowRow(
+                                            show = show,
+                                            onShowClick = onShowClick,
+                                            onRemove = {
+                                                pendingUnwatch =
+                                                    PendingUnwatch("tv", show.tmdb, show.title)
+                                            },
+                                        )
                                     }
                                 }
                             }
@@ -852,8 +901,11 @@ internal fun SectionHeader(text: String) {
     )
 }
 
+/** A watched row queued for removal, held while the confirmation dialog is up. */
+private data class PendingUnwatch(val kind: String, val tmdb: Int?, val title: String)
+
 @Composable
-private fun WatchedMovieRow(movie: TheaterWatchedMovie) {
+private fun WatchedMovieRow(movie: TheaterWatchedMovie, onRemove: () -> Unit) {
     val spacings = LocalSpacings.current
 
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
@@ -878,6 +930,9 @@ private fun WatchedMovieRow(movie: TheaterWatchedMovie) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            TextButton(onClick = onRemove, enabled = movie.tmdb != null) {
+                Text(text = "Remove", color = MaterialTheme.colorScheme.error)
             }
         }
     }
@@ -917,7 +972,11 @@ private fun WatchedEpisodeRow(episode: TheaterWatchedEpisode) {
 }
 
 @Composable
-private fun WatchedShowRow(show: TheaterWatchedShow, onShowClick: (Int) -> Unit) {
+private fun WatchedShowRow(
+    show: TheaterWatchedShow,
+    onShowClick: (Int) -> Unit,
+    onRemove: () -> Unit,
+) {
     val spacings = LocalSpacings.current
     val tmdb = show.tmdb
 
@@ -945,6 +1004,9 @@ private fun WatchedShowRow(show: TheaterWatchedShow, onShowClick: (Int) -> Unit)
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+            TextButton(onClick = onRemove, enabled = tmdb != null) {
+                Text(text = "Remove", color = MaterialTheme.colorScheme.error)
             }
         }
     }

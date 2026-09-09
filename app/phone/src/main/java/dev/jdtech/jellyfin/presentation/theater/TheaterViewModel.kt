@@ -378,12 +378,53 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
     fun openShowDetails(tmdb: Int) {
         viewModelScope.launch {
             _detailsState.value = TheaterDetailsState(isOpen = true, isLoading = true)
-            try {
-                val show = api.showDetails(tmdb)
-                _detailsState.update { it.copy(isLoading = false, selectedShow = show) }
-            } catch (e: Exception) {
-                _detailsState.update { it.copy(isLoading = false, error = e.errorText()) }
-            }
+            loadShowDetails(tmdb)
+        }
+    }
+
+    /** Re-fetches the open details pane in place, keeping the currently rendered show visible. */
+    private suspend fun loadShowDetails(tmdb: Int) {
+        try {
+            val show = api.showDetails(tmdb)
+            _detailsState.update { it.copy(isLoading = false, selectedShow = show, error = null) }
+        } catch (e: Exception) {
+            _detailsState.update { it.copy(isLoading = false, error = e.errorText()) }
+        }
+    }
+
+    /**
+     * Reverses a single watched episode. The server flips it back in `/api/show/details`
+     * immediately, so a reload is enough to refresh the pane.
+     */
+    fun unmarkEpisode(show: TheaterShowDetails, episode: TheaterEpisode) {
+        val tmdb = show.tmdb
+        val season = episode.season
+        val number = episode.episode
+        if (tmdb == null || season == null || number == null) {
+            _messages.value = "No episode id to unmark"
+            return
+        }
+        runAction(successMessage = "Marked unwatched") {
+            api.unmarkWatched(
+                kind = "episode",
+                tmdb = tmdb,
+                season = season,
+                episode = number,
+                title = show.title,
+            )
+            loadShowDetails(tmdb)
+        }
+    }
+
+    /** Drops a movie or a whole show from the watched lists. */
+    fun unmarkWatchedRow(kind: String, tmdb: Int?, title: String) {
+        if (tmdb == null) {
+            _messages.value = "No TMDB id for $title"
+            return
+        }
+        runAction(successMessage = "Removed from watched") {
+            api.unmarkWatched(kind = kind, tmdb = tmdb, title = title)
+            loadWatched()
         }
     }
 

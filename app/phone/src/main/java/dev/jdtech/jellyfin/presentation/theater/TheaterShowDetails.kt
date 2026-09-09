@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -119,9 +120,41 @@ private fun TvSeriesCard(series: TheaterTvSeries, onClick: (Int) -> Unit) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ShowDetailsSection(state: TheaterDetailsState, innerPadding: PaddingValues) {
+internal fun ShowDetailsSection(
+    state: TheaterDetailsState,
+    innerPadding: PaddingValues,
+    onUnmarkEpisode: (TheaterEpisode) -> Unit,
+) {
     val spacings = LocalSpacings.current
     val show = state.selectedShow
+    var pendingUnmark by remember { mutableStateOf<TheaterEpisode?>(null) }
+
+    pendingUnmark?.let { episode ->
+        AlertDialog(
+            onDismissRequest = { pendingUnmark = null },
+            title = { Text(text = "Mark ${episode.episodeCode() ?: "episode"} as unwatched?") },
+            text = {
+                Text(
+                    text =
+                        "It will be removed from your watched history here and on SimKL " +
+                            "within a few minutes."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onUnmarkEpisode(episode)
+                        pendingUnmark = null
+                    }
+                ) {
+                    Text(text = "Unwatch", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingUnmark = null }) { Text(text = "Cancel") }
+            },
+        )
+    }
 
     when {
         state.isLoading -> CenteredLoading()
@@ -181,7 +214,10 @@ internal fun ShowDetailsSection(state: TheaterDetailsState, innerPadding: Paddin
                         if (!collapsed) {
                             episodes.forEach { episode ->
                                 item(key = "e-$season-${episode.episode ?: episode.name}") {
-                                    EpisodeRow(episode = episode)
+                                    EpisodeRow(
+                                        episode = episode,
+                                        onUnmark = { pendingUnmark = episode },
+                                    )
                                 }
                             }
                         }
@@ -334,15 +370,24 @@ private fun SeasonHeader(
     }
 }
 
+/**
+ * Tapping a watched episode offers to reverse it; unwatched rows are inert, since the details
+ * screen deliberately has no watch-marking affordance.
+ */
 @Composable
-private fun EpisodeRow(episode: TheaterEpisode) {
+private fun EpisodeRow(episode: TheaterEpisode, onUnmark: () -> Unit) {
     val spacings = LocalSpacings.current
     // Unwatched episodes stay muted so the watched run reads at a glance.
     val contentColor =
         if (episode.watched) MaterialTheme.colorScheme.onSurface
         else MaterialTheme.colorScheme.onSurfaceVariant
+    val canUnmark = episode.watched && episode.season != null && episode.episode != null
 
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+    OutlinedCard(
+        onClick = onUnmark,
+        enabled = canUnmark,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(spacings.medium),
             horizontalArrangement = Arrangement.spacedBy(spacings.small),

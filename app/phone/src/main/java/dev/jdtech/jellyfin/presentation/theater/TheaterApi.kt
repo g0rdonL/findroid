@@ -321,6 +321,27 @@ class TheaterApi @Inject constructor() {
         postForm("/api/watched/add", *fields.toTypedArray())
     }
 
+    /**
+     * Un-marks something watched. Pass [season] and [episode] with `kind=episode` to reverse a
+     * single episode; `kind=tv` or `kind=movie` clear the whole title. The server tombstones the
+     * row so a later SimKL sync cannot resurrect it, and queues the SimKL history removal.
+     */
+    suspend fun unmarkWatched(
+        kind: String,
+        tmdb: Int,
+        season: Int? = null,
+        episode: Int? = null,
+        title: String? = null,
+    ) {
+        val fields = mutableListOf<Pair<String, String>>()
+        fields.add("kind" to kind)
+        fields.add("tmdb" to tmdb.toString())
+        season?.let { fields.add("season" to it.toString()) }
+        episode?.let { fields.add("episode" to it.toString()) }
+        fields.add("title" to title.orEmpty())
+        postForm("/api/watched/remove", *fields.toTypedArray())
+    }
+
     suspend fun removeFromWatchlist(tmdb: Int) {
         postForm("/api/watchlist/remove", "tmdb" to tmdb.toString())
     }
