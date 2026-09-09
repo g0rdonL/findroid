@@ -31,7 +31,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SecondaryScrollableTabRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Tab
@@ -122,7 +122,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
         Column(
             modifier = Modifier.fillMaxSize().padding(top = innerPadding.calculateTopPadding())
         ) {
-            SecondaryTabRow(selectedTabIndex = selectedTab.ordinal) {
+            SecondaryScrollableTabRow(selectedTabIndex = selectedTab.ordinal) {
                 TheaterTab.entries.forEach { tab ->
                     Tab(
                         selected = selectedTab == tab,
@@ -163,6 +163,7 @@ fun TheaterScreen(modifier: Modifier = Modifier, viewModel: TheaterViewModel = h
                         onKindChange = viewModel::onWatchlistKindChange,
                         onRefresh = viewModel::loadWatchlist,
                         onRemove = viewModel::removeFromWatchlist,
+                        onMarkWatched = viewModel::markWatchedFromWatchlist,
                     )
                 TheaterTab.WATCHED ->
                     WatchedSection(
@@ -600,6 +601,7 @@ private fun WatchlistSection(
     onKindChange: (TitleKind) -> Unit,
     onRefresh: () -> Unit,
     onRemove: (TheaterWatchlistMovie) -> Unit,
+    onMarkWatched: (TheaterWatchlistMovie) -> Unit,
 ) {
     val spacings = LocalSpacings.current
 
@@ -653,7 +655,11 @@ private fun WatchlistSection(
                             items = state.visibleMovies,
                             key = { it.tmdb ?: it.title.hashCode() },
                         ) { movie ->
-                            WatchlistRow(movie = movie, onRemove = { onRemove(movie) })
+                            WatchlistRow(
+                                movie = movie,
+                                onMarkWatched = { onMarkWatched(movie) },
+                                onRemove = { onRemove(movie) },
+                            )
                         }
                     }
                 }
@@ -888,7 +894,11 @@ private fun WatchedShowRow(show: TheaterWatchedShow) {
 }
 
 @Composable
-private fun WatchlistRow(movie: TheaterWatchlistMovie, onRemove: () -> Unit) {
+private fun WatchlistRow(
+    movie: TheaterWatchlistMovie,
+    onMarkWatched: () -> Unit,
+    onRemove: () -> Unit,
+) {
     val spacings = LocalSpacings.current
 
     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
@@ -918,6 +928,9 @@ private fun WatchlistRow(movie: TheaterWatchlistMovie, onRemove: () -> Unit) {
                             Modifier.align(Alignment.Center).padding(horizontal = spacings.small),
                     )
                 }
+            }
+            TextButton(onClick = onMarkWatched, enabled = movie.tmdb != null) {
+                Text(text = "\u2713 Watched")
             }
             TextButton(onClick = onRemove, enabled = movie.tmdb != null) {
                 Text(text = "Remove", color = MaterialTheme.colorScheme.error)

@@ -244,6 +244,18 @@ class TheaterApi @Inject constructor() {
         postForm("/api/watched/add", *fields.toTypedArray())
     }
 
+    /**
+     * Marks a watchlist entry watched. The server also drops it from the watchlist, so callers
+     * should reload the watchlist afterwards.
+     */
+    suspend fun markWatchlistWatched(entry: TheaterWatchlistMovie) {
+        val fields = mutableListOf<Pair<String, String>>()
+        fields.add("kind" to if (entry.isShow) "tv" else "movie")
+        entry.tmdb?.let { fields.add("tmdb" to it.toString()) }
+        fields.add("title" to entry.title)
+        postForm("/api/watched/add", *fields.toTypedArray())
+    }
+
     suspend fun removeFromWatchlist(tmdb: Int) {
         postForm("/api/watchlist/remove", "tmdb" to tmdb.toString())
     }

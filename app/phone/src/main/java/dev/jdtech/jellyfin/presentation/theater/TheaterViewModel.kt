@@ -236,6 +236,18 @@ class TheaterViewModel @Inject constructor(private val api: TheaterApi) : ViewMo
         }
     }
 
+    /** Moves a watchlist entry to watched; the server removes it from the watchlist for us. */
+    fun markWatchedFromWatchlist(entry: TheaterWatchlistMovie) {
+        if (entry.tmdb == null) {
+            _messages.value = "No TMDB id for ${entry.title}"
+            return
+        }
+        runAction(successMessage = "Marked ${entry.title} watched") {
+            api.markWatchlistWatched(entry)
+            loadWatchlist()
+        }
+    }
+
     fun pauseOrResume(download: TheaterDownload) {
         val action = if (download.isPaused) "resume" else "pause"
         runAction(successMessage = null) {
